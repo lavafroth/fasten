@@ -65,24 +65,20 @@ impl<R: Read> Iterator for FastqReader<R> {
 
             // Read the ID of the entry
             match self.reader.read_line(&mut id) {
-                Ok(n) => {
-                    // if we're expecting an ID line, but
-                    // there are zero bytes read, then we are
-                    // at the end of the file. Break.
-                    if n < 1 {
-                        return None;
-                    }
-                }
+                // if we're expecting an ID line, but
+                // there are zero bytes read, then we are
+                // at the end of the file. Break.
+                Ok(0) => return None,
+                Ok(_n) => {},
                 Err(error) => {
                     panic!("ERROR: could not read the ID line: {}",error);
                 }
             };
 
             self.reader.read_line(&mut seq).expect("ERROR: could not read sequence line");
-        
-            // burn the plus sign
-            let mut _plus = String::new();
-            self.reader.read_line(&mut _plus).expect("ERROR: plus sign line not found");
+
+            // skip the plus sign
+            self.reader.skip_until(b'\n').expect("ERROR: plus sign line not found");
 
             self.reader.read_line(&mut qual).expect("ERROR: could not read qual line");
 
@@ -101,14 +97,8 @@ impl<R: Read> Iterator for FastqReader<R> {
 
             // Read the ID of the entry
             match self.reader.read_line(&mut id) {
-                Ok(n) => {
-                    // if we're expecting an ID line, but
-                    // there are zero bytes read, then we are
-                    // at the end of the file. Break.
-                    if n < 1 {
-                        return None;
-                    }
-                }
+                Ok(0) => return None,
+                Ok(_n) => {},
                 Err(error) => {
                     panic!("ERROR: {}",error);
                 }
@@ -117,19 +107,17 @@ impl<R: Read> Iterator for FastqReader<R> {
             // Read the DNA line of the entry and count
             // how long it is.
             'dna: loop{
-                let mut buf = String::new();
-                match self.reader.read_line(&mut buf) {
+                // clears the buffer without changing capacity
+                match self.reader.read_line(&mut seq) {
+                    Ok(0) => panic!("ERROR: incomplete entry (no seq line), seqid {}\nbuf {}", id.trim(), seq),
                     Ok(n) => {
-                        if n < 1 {
-                            panic!("ERROR: incomplete entry (no seq line), seqid {}\nbuf {}", id.trim(),buf);
-                        }
                         // if we hit the qual line, then it is a single
                         // character, +
-                        else if &buf[0..1] == "+" {
+                        let check_for_plus = seq.len() - n;
+                        
+                        if &seq[check_for_plus..check_for_plus+1] == "+" {
+                            seq.truncate(check_for_plus);
                             break 'dna;
-                        }
-                        else {
-                            seq.push_str(&buf);
                         }
                     }
                     Err(error) => {
@@ -144,22 +132,16 @@ impl<R: Read> Iterator for FastqReader<R> {
             // build onto the qual line until it has the right
             // number of bytes.
             'qual: loop{
-                let mut buf = String::new();
-                match self.reader.read_line(&mut buf) {
-                    Ok(n) => {
-                        if n < 1 {
-                            panic!("ERROR: incomplete entry (no qual line), seqid {}\nbuf {}", id.trim(),buf);
-                        }
-                        else {
-                          qual.push_str(&buf);
-                        }
+                match self.reader.read_line(&mut qual) {
+                    Ok(0) => panic!("ERROR: incomplete entry (no qual line), seqid {}\nqual {}", id.trim(),qual),
+                    Ok(_n) => {
                         qual = whitespace_regex.replace_all(&qual,"").into_owned();
                         if qual.len() >= read_length {
                           break 'qual;
                         }
                     }
                     Err(error) => {
-                        panic!("ERROR while reading qual for ID {}: {}",buf.trim(),error);
+                        panic!("ERROR while reading qual for ID {}: {}",qual.trim(),error);
                     }
                 }
             }
