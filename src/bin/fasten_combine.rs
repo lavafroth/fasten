@@ -214,14 +214,9 @@ fn main(){
             }
 
             // switch to u8 and then the corresponding char
-            let mut qual_recalc_char = qual_recalc.round() as u8 as char;
-            if (qual_recalc_char as u8) > max_qual {
-                qual_recalc_char = max_qual_char;
-            }
             // a reduction in quality is not expected... but just in case.
-            if (qual_recalc_char as u8) < min_qual {
-                qual_recalc_char = min_qual_char;
-            }
+            let qual_recalc_char = (qual_recalc.round() as u8)
+                           .clamp(min_qual, max_qual) as char;
             qual_cigar.push(qual_recalc_char);
         }
 
